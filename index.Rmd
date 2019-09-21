@@ -297,6 +297,13 @@ plot3.obj <- plot(fit.rf.obj, main = "Random Forest: Accuracy by Predictor Count
 print(plot3.obj)
 ```
 
+* The most important variable for the random forest model is *roll_belt* and corresponds to the previous chart with only 3 variables having an importance over 50.  
+
+```{r eval=TRUE}
+varImp(fit.rf.obj, scale = TRUE)
+```
+
+
 ## Appendix
 
 ### R Parameters

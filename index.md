@@ -337,6 +337,42 @@ registerDoSEQ()
 
 ![](index_files/figure-html/unnamed-chunk-18-1.png)<!-- -->
 
+* The most important variable for the random forest model is *roll_belt* and corresponds to the previous chart with only 3 variables having an importance over 50.  
+
+
+```r
+varImp(fit.rf.obj, scale = TRUE)
+```
+
+```
+## rf variable importance
+## 
+##   only 20 most important variables shown (out of 52)
+## 
+##                      Overall
+## roll_belt             100.00
+## pitch_forearm          57.97
+## yaw_belt               56.50
+## pitch_belt             44.74
+## magnet_dumbbell_z      43.96
+## magnet_dumbbell_y      42.95
+## roll_forearm           42.13
+## accel_dumbbell_y       21.64
+## magnet_dumbbell_x      17.42
+## roll_dumbbell          16.85
+## accel_forearm_x        16.70
+## magnet_belt_z          15.13
+## accel_belt_z           14.04
+## magnet_forearm_z       13.92
+## total_accel_dumbbell   13.75
+## accel_dumbbell_z       13.45
+## magnet_belt_y          11.93
+## gyros_belt_z           11.62
+## yaw_arm                11.09
+## magnet_belt_x          10.17
+```
+
+
 ## Appendix
 
 ### R Parameters
