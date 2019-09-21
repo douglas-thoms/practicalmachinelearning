@@ -265,7 +265,7 @@ registerDoSEQ()
 ## 3           LDA    0.2955356233 0.7044644 0.6259796
 ```
 ### Cross Validation and Out of Sample Error
-* 5 k-folds were chosen since each fold represents 20% of testing data.  
+* 5 k-folds were chosen since each fold represents 20% of training data.  
   
 * Comparing the confusion matrices, Random Forest model looks the most accurate out of sample as well.  
   
@@ -321,7 +321,7 @@ registerDoSEQ()
 ##  Accuracy (average) : 0.7023
 ```
 
-* Comparing the average k-fold random forest has the highest average accuracy and the lowest average out of sample error.  GBM is comparable while the LDA model average out of sample error is the highest. 
+* Using cross-validation, random forest has the highest out of sample average accuracy and the lowest average out of sample error.  GBM's performance is comparable with random foreest while the LDA model has the worst performance. 
 
 ```
 ##           Model Out.of.Error.Sample Mean.Accuracy Mean.Kappa

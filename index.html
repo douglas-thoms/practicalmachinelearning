@@ -546,7 +546,7 @@ registerDoSEQ()</code></pre>
 <div id="cross-validation-and-out-of-sample-error" class="section level3">
 <h3>Cross Validation and Out of Sample Error</h3>
 <ul>
-<li><p>5 k-folds were chosen since each fold represents 20% of testing data.</p></li>
+<li><p>5 k-folds were chosen since each fold represents 20% of training data.</p></li>
 <li><p>Comparing the confusion matrices, Random Forest model looks the most accurate out of sample as well.</p></li>
 <li><p>Random Forest</p></li>
 </ul>
@@ -596,7 +596,7 @@ registerDoSEQ()</code></pre>
 ##                             
 ##  Accuracy (average) : 0.7023</code></pre>
 <ul>
-<li>Comparing the average k-fold random forest has the highest average accuracy and the lowest average out of sample error. GBM is comparable while the LDA model average out of sample error is the highest.</li>
+<li>Using cross-validation, random forest has the highest out of sample average accuracy and the lowest average out of sample error. GBM’s performance is comparable with random foreest while the LDA model has the worst performance.</li>
 </ul>
 <pre><code>##           Model Out.of.Error.Sample Mean.Accuracy Mean.Kappa
 ## 1 Random Forest          0.00562023     0.9943798  0.9928898
