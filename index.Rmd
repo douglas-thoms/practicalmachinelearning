@@ -1,0 +1,315 @@
+---
+title: "Assignment-Machine.Learning"
+author: "Douglas Thoms"
+date: "September 19, 2019"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r results='hide', echo=FALSE}
+sessionInfo()
+```
+
+```{r results='hide', echo=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(parallel)
+library(doParallel)
+library(earth)
+```
+
+
+## Prediction objective
+
+* A research group tested whether they could measure the quality of exercise by classifying the weight lifting technique errors using physical sensors.  
+  
+* The goal is to predict the *classe* variable.  The *classe* variable represents the type of error with "A" representing a correct dumbell curl and "B","C","D" and "E" representing typical errors in technique.  
+  
+* Any other variables can be used to predict *classe*.  
+  
+## Inputs  
+
+* The data has already been partitioned in a training and testing sets.  
+
+* No codebook has been provided but the research paper was available.  It summarizes
+the methodology of the study and the context of the data.  
+  
+
+
+```{r echo=FALSE,eval=TRUE}
+if(!file.exists("training.csv")){
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                      destfile = "C:/Users/Douglas/Documents/Coursera/Johns.Hopkins.Data.Science.Specialization/Machine.Learning/Assignment/training.csv")
+}
+
+#read sources and put in NA in blank
+training = read.csv("C:/Users/Douglas/Documents/Coursera/Johns.Hopkins.Data.Science.Specialization/Machine.Learning/Assignment/training.csv",
+                    na.strings=c("","NA"))
+
+if(!file.exists("testing.csv")){
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+              destfile = "C:/Users/Douglas/Documents/Coursera/Johns.Hopkins.Data.Science.Specialization/Machine.Learning/Assignment/testing.csv")
+}
+
+#read sources and put in NA in blank
+testing = read.csv("C:/Users/Douglas/Documents/Coursera/Johns.Hopkins.Data.Science.Specialization/Machine.Learning/Assignment/testing.csv",
+                   na.strings=c("","NA"))
+```
+
+```{r eval=TRUE}
+dim(training)
+head(select(training,1:15))
+dim(testing)
+head(select(testing,1:15))
+```
+
+
+
+## Cleaning Data, Exploratory Analysis
+
+```{r echo=FALSE}
+#function to see which columns have all NA
+take.NA = function(x){
+                 if(sum(is.na(x)) == length(x)){
+                        x="TRUE"
+                 } else{
+                        x="non NA values present"
+                 }
+        }
+
+#remove all values that are completely NA
+testing.non.zero.values <- apply(testing, 2, take.NA)
+
+#remove all NA columns
+testing.proc <- testing[,testing.non.zero.values != TRUE]
+
+#create vector to select to remove vectors in training that were removed from testing
+training.remove.vectors <- names(testing)[testing.non.zero.values == TRUE]
+
+#remove columns
+training.proc.raw <- training[, !colnames(training) %in% training.remove.vectors]
+
+#check for NA, empty spaces in observation
+empty.cells <- complete.cases(training.proc.raw)[FALSE]
+
+#remove variables with unlikely relation like training window, etc
+training.proc.raw <- select(training.proc.raw, -X, -user_name,-raw_timestamp_part_1,
+          -raw_timestamp_part_2, -cvtd_timestamp)
+
+training.proc.num_window <- training.proc.raw[training.proc.raw$new_window == "no", ] 
+```
+
+* Some individual variables are ambigious in their meaning including
+*num_window* and *new_window* - further investigation is needed.  
+
+* According to the study, subjects did one set of 10 repetitions of each "class" of exercise.  The researchers would record the data using a sliding window ranging from 0.5 secs to 2.5 secs.  The *new_window* variables that are *yes* have the calculated variables like minimum, maximum, etc.  This suggests that the *new_window-yes* values are the end of the sliding windows and the extra values are calculated at this point.  
+
+* The *num_window* values all consistently line up with specific *classe* values.  For instance, all *num_window* 11 values correspond to *classe* "A".  This suggests *num_window* either represents a set of repetitions or individual repetitions. This was determined using the code below. 
+
+```{r echo = TRUE}
+#create table of frequency of classe per num_window
+#using code below to create table and count number of num_window that
+#have only one type of classe e.  All num_window have exclusively one classe
+table.classe.training.proc <- table(training.proc.num_window$num_window, training.proc.num_window$classe)
+table.classe.training.proc <- data.frame(table.classe.training.proc)
+table.classe.training.proc <- table.classe.training.proc[table.classe.training.proc$Freq > 0, ] 
+classe.per.num_window <- count(table.classe.training.proc, Var1)
+
+#length of vector is 857, same as all observations
+freq.1.classe.num_window <- length(classe.per.num_window[classe.per.num_window$n == 1,]$Var1)
+#num_window will be treated as a repetition
+```
+  
+* The testing set has columns that are exclusively NA.  On further examination this is because these columns are the caculated values and are populated when the *new_window* variable equals ye" - none of the testing *new_window* variables equals "yes".  Therefore, these columns were removed from both the training and testing sets since they would not be useful as predictors.  
+  
+* Some variables shared by both testing and training were excluded as perdictors
+as they had no obvious relation to classifying the repetitions (i.e. *raw_timestamp_part_1*).  Removing these predictors improved the performance of the models.  
+
+## Features
+
+* The classified variable *classe* is discrete and not continuous.  Therefore, a simple
+count bar graph was used to review the distribution of potential outcomes.  It looks like there
+is a reasonable balance of outcomes.
+
+```{r echo = FALSE, eval=TRUE}
+#check distribution of casse
+
+classe.dist <- aggregate(Freq~Var2, data = table.classe.training.proc, sum)
+plot1.obj <- ggplot(data = classe.dist, aes(x = Var2, y = Freq, fill = Var2)) +
+        geom_bar(stat = "identity") + 
+        labs(title = "Distribution of \'classe\' Variables", x = "", y = "") +
+        theme(legend.position = "none")
+plot(plot1.obj)
+```
+
+* The mean and standard deviation were graphed to see if there were any extreme outliers or unusual values.  None were found.  
+
+```{r echo = FALSE, eval=TRUE}
+ave.mean.test <- select(training.proc.num_window, -num_window, -new_window, -classe)
+
+ave.mean.test <- t(rbind(summarise_each(ave.mean.test, mean), summarise_each(ave.mean.test, sd)))
+ave.mean.test <- data.frame(ave.mean.test)
+names(ave.mean.test) <- c("mean", "SD")
+
+plot2.obj <- ggplot(data = ave.mean.test, aes(x = mean, y = SD)) +
+        geom_jitter() +
+        labs(title = "Comparison of Mean vs Standard Deviation", 
+             x = "Mean", y = "Standard Deviation") +
+        theme(legend.position = "none")
+plot(plot2.obj)
+
+```
+  
+* The review suggests no need for feature modification and preprocessing.  
+
+## Algorithims
+
+* Parallel processing was enabled to speed processing.  
+  
+* K-fold cross validation was included using trainControl function.
+
+### Model Choices
+  
+* Three models were compared:
+
+
+```{r cache = TRUE}
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+```
+Random Forest
+```{r cache = TRUE}
+fit.rf.obj <- train(classe~., method="rf", data = training.proc.num_window[c(-1,-2)],
+                    trControl = fitControl)
+```
+Generalized Boosted Regression Modeling
+```{r cache = TRUE, results="hide"}
+fit.gbm.obj <- train(classe~., method="gbm", data = training.proc.num_window[c(-1,-2)],
+                    trControl = fitControl)
+```
+ Linear Discriminant Analysis
+```{r cache = TRUE}
+fit.lda.obj <- train(classe~., method="lda", data = training.proc.num_window[c(-1,-2)],
+                     trControl = fitControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+## Evaluation
+
+### In Sample Accuracy and Error
+* In sample error is as follows for the 3 different models.  
+```{r echo=FALSE, eval=TRUE}
+#Accuracy calcs
+predict.rf <- predict(fit.rf.obj, newdata = training, type = "raw")
+rf.train.accuracy <- confusionMatrix(predict.rf, training$classe)
+
+predict.gbm <- predict(fit.gbm.obj, newdata = training, type = "raw")
+gbm.train.accuracy <- confusionMatrix(predict.gbm, training$classe)
+
+predict.lda <- predict(fit.lda.obj, newdata = training, type = "raw")
+lda.train.accuracy <- confusionMatrix(predict.lda, training$classe)
+
+fit.in.sample.list <- list(rf.train.accuracy, gbm.train.accuracy, lda.train.accuracy)
+fit.name.vct <- c("Random Forest","GBM","LDA")
+
+fit.all.in.sample <- data.frame()
+
+for(i in 1:3){
+        tmp <- data.frame(t(fit.in.sample.list[[i]]$overall[c(1,2)]))
+        tmp <- tmp%>%
+                mutate(Model = fit.name.vct[i]) %>%
+                mutate(In.Sample.Error = 1 - Accuracy) %>%
+                select(Model, In.Sample.Error, Accuracy, Kappa)
+
+        if (i==1) fit.all.in.sample <- tmp else fit.all.in.sample <-
+                        rbind(fit.all.in.sample, tmp)
+}
+print(fit.all.in.sample)
+```
+### Cross Validation and Out of Sample Error
+* 5 k-folds were chosen since each fold represents 20% of testing data.  
+  
+* Comparing the confusion matrices, Random Forest model looks the most accurate out of sample as well.  
+  
+* Random Forest  
+```{r echo = FALSE, eval = TRUE}
+fit.rf.conf <- confusionMatrix.train(fit.rf.obj)
+print(fit.rf.conf)
+```
+* Generalized Boosted Regression Modeling   
+```{r echo = FALSE, eval = TRUE}
+fit.gbm.conf <- confusionMatrix.train(fit.gbm.obj)
+print(fit.gbm.conf)
+```
+* Linear Discriminant Analysis   
+```{r echo = FALSE, eval = TRUE}
+fit.lda.conf <- confusionMatrix.train(fit.lda.obj)
+print(fit.lda.conf)
+```
+
+* Comparing the average k-fold random forest has the highest average accuracy and the lowest average out of sample error.  GBM is comparable while the LDA model average out of sample error is the highest. 
+```{r echo = FALSE, eval = TRUE}
+fit.rf.resample <- fit.rf.obj$resample
+fit.gbm.resample <- fit.gbm.obj$resample
+fit.lda.resample <- fit.lda.obj$resample
+
+fit.resample.list <- list(fit.rf.resample, fit.gbm.resample, fit.lda.resample)
+fit.name.vct <- c("Random Forest","GBM","LDA")
+
+fit.all.resample <- data.frame()
+
+for(i in 1:3){
+        tmp <- fit.resample.list[[i]] %>%
+                select(-Resample) %>%
+                summarise(Mean.Accuracy = mean(Accuracy), Mean.Kappa = mean(Kappa)) %>%
+                mutate(Model = fit.name.vct[i]) %>%
+                mutate(Out.of.Error.Sample = 1 - Mean.Accuracy) %>%
+                select( Model, Out.of.Error.Sample, Mean.Accuracy, Mean.Kappa)
+
+        if (i==1) fit.all.resample <- tmp else fit.all.resample <-
+                                                    rbind(fit.all.resample, tmp)
+}
+
+print(fit.all.resample)
+
+```
+## Results
+
+* As a result of the comparison, the Random Forest model will be used.  It has an Out of Sample error of less than 1% when using cross-validation and performs the best out of the 3 models.  
+  
+* The *Accuracy by Predictor Count* graph suggests that only a few predictors are need to optimally classify the type of exercise and that once the predictors approach 30 it begins to slightly decrease the accuracy of the model.
+
+```{r echo=FALSE, eval=TRUE}
+plot3.obj <- plot(fit.rf.obj, main = "Random Forest: Accuracy by Predictor Count")
+print(plot3.obj)
+```
+
+## Appendix
+
+### R Parameters
+
+```{r}
+sessionInfo()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(parallel)
+library(doParallel)
+library(earth)
+```
